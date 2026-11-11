@@ -859,3 +859,4 @@ export function VehicleDetailPage() {
     </div>
   );
 }
+

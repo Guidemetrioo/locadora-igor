@@ -404,3 +404,4 @@ export function SettingsPage() {
     </div>
   );
 }
+

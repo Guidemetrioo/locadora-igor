@@ -13,6 +13,7 @@ import {
   SystemNotification,
   AuditLog,
 } from '../../shared/types';
+import { handleLocalApiRequest } from '../services/localEngine';
 
 export interface EnrichedVehicle extends Vehicle {
   calculatedDailyKmAvg: number | null;
@@ -90,21 +91,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         headers.Authorization = `Bearer ${token}`;
       }
 
-      const res = await fetch(path, {
-        ...options,
-        headers,
-      });
+      try {
+        const res = await fetch(path, {
+          ...options,
+          headers,
+        });
 
-      if (res.status === 401) {
-        logout();
-        throw new Error('Sessão expirada. Faça login novamente.');
-      }
+        const contentType = res.headers.get('content-type') || '';
+        // If deployed on static/serverless host (Vercel) where /api/* returns 404 or index.html, use localEngine transparently
+        if (res.status === 404 || contentType.includes('text/html')) {
+          return await handleLocalApiRequest<T>(path, options);
+        }
 
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(json.error || 'Erro ao processar a solicitação.');
+        if (res.status === 401) {
+          logout();
+          throw new Error('Sessão expirada. Faça login novamente.');
+        }
+
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(json.error || 'Erro ao processar a solicitação.');
+        }
+        return json as T;
+      } catch (err: any) {
+        if (err?.message?.includes('Failed to fetch') || err?.message?.includes('NetworkError')) {
+          return await handleLocalApiRequest<T>(path, options);
+        }
+        throw err;
       }
-      return json as T;
     },
     [token, logout]
   );
@@ -135,6 +149,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
+      const contentType = res.headers.get('content-type') || '';
+      if (res.status === 404 || contentType.includes('text/html')) {
+        const localRes = await handleLocalApiRequest<{ token: string }>('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ username, password }),
+        });
+        localStorage.setItem('fleet_auth_token', localRes.token);
+        setToken(localRes.token);
+        showToast('Bem-vindo ao painel administrativo!', 'success');
+        return true;
+      }
       const json = await res.json();
       if (!res.ok) {
         showToast(json.error || 'Credenciais inválidas', 'error');
@@ -144,9 +169,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setToken(json.token);
       showToast('Bem-vindo ao painel administrativo!', 'success');
       return true;
-    } catch (err) {
-      showToast('Falha ao conectar com o servidor.', 'error');
-      return false;
+    } catch (err: any) {
+      try {
+        const localRes = await handleLocalApiRequest<{ token: string }>('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ username, password }),
+        });
+        localStorage.setItem('fleet_auth_token', localRes.token);
+        setToken(localRes.token);
+        showToast('Bem-vindo ao painel administrativo!', 'success');
+        return true;
+      } catch (e: any) {
+        showToast(e.message || 'Credenciais inválidas.', 'error');
+        return false;
+      }
     }
   };
 
