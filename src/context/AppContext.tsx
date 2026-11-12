@@ -98,8 +98,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         });
 
         const contentType = res.headers.get('content-type') || '';
-        // If deployed on static/serverless host (Vercel) where /api/* returns 404 or index.html, use localEngine transparently
-        if (res.status === 404 || contentType.includes('text/html')) {
+        // If deployed on static/serverless host (Vercel) where /api/* returns 404, 405, 500 or HTML, use localEngine transparently
+        if (!res.ok || contentType.includes('text/html') || !contentType.includes('application/json')) {
           return await handleLocalApiRequest<T>(path, options);
         }
 
@@ -150,7 +150,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ username, password }),
       });
       const contentType = res.headers.get('content-type') || '';
-      if (res.status === 404 || contentType.includes('text/html')) {
+      if (!res.ok || contentType.includes('text/html') || !contentType.includes('application/json')) {
         const localRes = await handleLocalApiRequest<{ token: string }>('/api/auth/login', {
           method: 'POST',
           body: JSON.stringify({ username, password }),

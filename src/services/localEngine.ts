@@ -729,3 +729,4 @@ export async function handleLocalApiRequest<T = any>(path: string, options: Requ
 
   throw new Error('Rota não encontrada.');
 }
+
